@@ -217,8 +217,18 @@ function placeBuilding(x, y, type) {
 
 function maybeFindTargetForMiner(building) {
   if (building.type !== 'miner') return;
-  if (!building.targetAsteroid || building.targetAsteroid.empty) {
-    building.targetAsteroid = nearestAsteroid(building.x, building.y);
+
+  const asteroid = nearestAsteroid(building.x, building.y);
+  if (!asteroid || asteroid.empty) {
+    building.targetAsteroid = null;
+    return;
+  }
+
+  const d = Math.hypot(building.x - asteroid.x, building.y - asteroid.y);
+  if (d <= 65) {
+    building.targetAsteroid = asteroid;
+  } else {
+    building.targetAsteroid = null;
   }
 }
 
@@ -231,24 +241,23 @@ function updateMineralsProduction(dt) {
     maybeFindTargetForMiner(building);
     if (!building.targetAsteroid || building.targetAsteroid.empty) continue;
 
-    const d = Math.hypot(building.x - building.targetAsteroid.x, building.y - building.targetAsteroid.y);
-    if (d >= 52) continue;
-
     building.cooldown -= dt;
     if (building.cooldown <= 0) {
-      const gain = 80;
+      const gain = Math.min(80, building.targetAsteroid.resource);
       world.minerals += gain;
       building.targetAsteroid.resource -= gain;
+      total += gain;
+
       if (building.targetAsteroid.resource <= 0) {
         building.targetAsteroid.empty = true;
         building.targetAsteroid.color = '#8b939c';
       }
-      total += gain;
+
       building.cooldown = 1;
     }
   }
 
-  world.mineralsPerMinute = total;
+  world.mineralsPerMinute = total * 60;
 }
 
 function updateSolarProduction() {
@@ -553,3 +562,4 @@ addInitialBuildings();
 updateResourceHud();
 updateInfoPanel();
 requestAnimationFrame(tick);
+
