@@ -88,7 +88,7 @@ body {
 }
 
 .info-panel {
-  min-height: 180px;
+  min-height: 200px;
 }
 
 .info-panel p {
@@ -130,6 +130,14 @@ body {
 
 .hud-group.right {
   justify-content: flex-end;
+}
+
+.mode-badge {
+  background: rgba(255, 186, 82, 0.12);
+  border: 1px solid rgba(255, 186, 82, 0.4);
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: var(--accent);
 }
 
 .quota-label {
@@ -178,7 +186,7 @@ button:hover {
 }
 
 #gameCanvas {
-  width: calc(100% - 0px);
+  width: 100%;
   height: calc(100% - 80px);
   display: block;
   background: radial-gradient(circle at center, rgba(86, 91, 161, 0.18), rgba(4, 8, 18, 0.96));
