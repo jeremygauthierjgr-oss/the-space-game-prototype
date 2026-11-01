@@ -42,6 +42,43 @@ function randomBetween(min, max) {
   return Math.random() * (max - min) + min;
 }
 
+function canvasPointFromEvent(event) {
+  const rect = canvas.getBoundingClientRect();
+  const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+  const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+  return { x, y };
+}
+
+function getClosestEnemy(x, y, range) {
+  let best = null;
+  let bestDistance = Infinity;
+
+  for (const enemy of world.enemies) {
+    const d = Math.hypot(x - enemy.x, y - enemy.y);
+    if (d <= range && d < bestDistance) {
+      best = enemy;
+      bestDistance = d;
+    }
+  }
+
+  return best;
+}
+
+function getClosestBuilding(x, y) {
+  let best = null;
+  let bestDistance = Infinity;
+
+  for (const building of world.buildings) {
+    const d = Math.hypot(x - building.x, y - building.y);
+    if (d < bestDistance) {
+      best = building;
+      bestDistance = d;
+    }
+  }
+
+  return best;
+}
+
 function addAsteroids() {
   for (let i = 0; i < 24; i++) {
     world.asteroids.push({
@@ -148,7 +185,14 @@ function spawnEnemy() {
 
 function placeBuilding(x, y, type) {
   const price = buildingPrice[type];
-  if (world.minerals < price) return;
+  if (!price || world.minerals < price) return;
+
+  for (const building of world.buildings) {
+    const d = Math.hypot(building.x - x, building.y - y);
+    if (d < building.radius + 18) {
+      return;
+    }
+  }
 
   world.minerals -= price;
 
@@ -173,9 +217,6 @@ function placeBuilding(x, y, type) {
 
 function maybeFindTargetForMiner(building) {
   if (building.type !== 'miner') return;
-  if (!building.targetAsteroid) {
-    building.targetAsteroid = nearestAsteroid(building.x, building.y);
-  }
   if (!building.targetAsteroid || building.targetAsteroid.empty) {
     building.targetAsteroid = nearestAsteroid(building.x, building.y);
   }
@@ -185,25 +226,25 @@ function updateMineralsProduction(dt) {
   let total = 0;
 
   for (const building of world.buildings) {
-    if (building.type === 'miner') {
-      maybeFindTargetForMiner(building);
-      if (building.targetAsteroid && !building.targetAsteroid.empty) {
-        const d = Math.hypot(building.x - building.targetAsteroid.x, building.y - building.targetAsteroid.y);
-        if (d < 52) {
-          building.cooldown -= dt;
-          if (building.cooldown <= 0) {
-            const gain = 80;
-            world.minerals += gain;
-            building.targetAsteroid.resource -= gain;
-            if (building.targetAsteroid.resource <= 0) {
-              building.targetAsteroid.empty = true;
-              building.targetAsteroid.color = '#8b939c';
-            }
-            total += gain;
-            building.cooldown = 1;
-          }
-        }
+    if (building.type !== 'miner') continue;
+
+    maybeFindTargetForMiner(building);
+    if (!building.targetAsteroid || building.targetAsteroid.empty) continue;
+
+    const d = Math.hypot(building.x - building.targetAsteroid.x, building.y - building.targetAsteroid.y);
+    if (d >= 52) continue;
+
+    building.cooldown -= dt;
+    if (building.cooldown <= 0) {
+      const gain = 80;
+      world.minerals += gain;
+      building.targetAsteroid.resource -= gain;
+      if (building.targetAsteroid.resource <= 0) {
+        building.targetAsteroid.empty = true;
+        building.targetAsteroid.color = '#8b939c';
       }
+      total += gain;
+      building.cooldown = 1;
     }
   }
 
@@ -226,16 +267,7 @@ function updateDefenses(dt) {
     if (building.type === 'laser') {
       building.cooldown -= dt;
       if (building.cooldown <= 0) {
-        let target = null;
-        let bestDist = Infinity;
-        for (const enemy of world.enemies) {
-          const d = Math.hypot(building.x - enemy.x, building.y - enemy.y);
-          if (d <= building.range && d < bestDist) {
-            bestDist = d;
-            target = enemy;
-          }
-        }
-
+        const target = getClosestEnemy(building.x, building.y, building.range || 120);
         if (target) {
           target.hp -= building.damage;
           world.lasers.push({
@@ -254,22 +286,12 @@ function updateDefenses(dt) {
     if (building.type === 'missile') {
       building.cooldown -= dt;
       if (building.cooldown <= 0) {
-        let target = null;
-        let bestDist = Infinity;
-        for (const enemy of world.enemies) {
-          const d = Math.hypot(building.x - enemy.x, building.y - enemy.y);
-          if (d <= building.range && d < bestDist) {
-            bestDist = d;
-            target = enemy;
-          }
-        }
-
+        const target = getClosestEnemy(building.x, building.y, building.range || 260);
         if (target) {
           world.projectiles.push({
             x: building.x,
             y: building.y,
-            tx: target.x,
-            ty: target.y,
+            target,
             speed: 220,
             radius: 4,
             damage: 90,
@@ -285,14 +307,14 @@ function updateDefenses(dt) {
 function updateEnemies(dt) {
   for (let i = world.enemies.length - 1; i >= 0; i--) {
     const enemy = world.enemies[i];
-    const target = world.buildings[0] || { x: canvas.width / 2, y: canvas.height / 2 };
-    const dx = target.x - enemy.x;
-    const dy = target.y - enemy.y;
+    const targetBuilding = getClosestBuilding(enemy.x, enemy.y) || { x: canvas.width / 2, y: canvas.height / 2 };
+    const dx = targetBuilding.x - enemy.x;
+    const dy = targetBuilding.y - enemy.y;
     const len = Math.hypot(dx, dy) || 1;
     enemy.x += (dx / len) * enemy.speed * 60 * dt;
     enemy.y += (dy / len) * enemy.speed * 60 * dt;
 
-    if (Math.hypot(enemy.x - target.x, enemy.y - target.y) < 12) {
+    if (targetBuilding && Math.hypot(enemy.x - targetBuilding.x, enemy.y - targetBuilding.y) < 18) {
       world.energy = Math.max(0, world.energy - 1);
       world.enemies.splice(i, 1);
       continue;
@@ -305,24 +327,24 @@ function updateEnemies(dt) {
   }
 }
 
-function updateProjectiles(dt) {
+function updateProjectiles() {
   for (let i = world.projectiles.length - 1; i >= 0; i--) {
     const p = world.projectiles[i];
-    const dx = p.tx - p.x;
-    const dy = p.ty - p.y;
-    const len = Math.hypot(dx, dy) || 1;
-    p.x += (dx / len) * p.speed * dt;
-    p.y += (dy / len) * p.speed * dt;
 
-    for (const enemy of world.enemies) {
-      if (Math.hypot(p.x - enemy.x, p.y - enemy.y) < enemy.radius + p.radius) {
-        enemy.hp -= p.damage;
-        world.projectiles.splice(i, 1);
-        break;
-      }
+    if (!p.target || p.target.hp <= 0) {
+      world.projectiles.splice(i, 1);
+      continue;
     }
 
-    if (world.projectiles[i] && Math.hypot(p.x - p.tx, p.y - p.ty) < 8) {
+    const dx = p.target.x - p.x;
+    const dy = p.target.y - p.y;
+    const len = Math.hypot(dx, dy) || 1;
+
+    p.x += (dx / len) * p.speed * 0.016;
+    p.y += (dy / len) * p.speed * 0.016;
+
+    if (Math.hypot(p.x - p.target.x, p.y - p.target.y) < p.radius + p.target.radius + 2) {
+      p.target.hp -= p.damage;
       world.projectiles.splice(i, 1);
     }
   }
@@ -475,7 +497,7 @@ function tick(timestamp) {
     updateMineralsProduction(dt);
     updateDefenses(dt);
     updateEnemies(dt);
-    updateProjectiles(dt);
+    updateProjectiles();
     updateLasers(dt);
     updateResourceHud();
     updateInfoPanel();
@@ -490,19 +512,16 @@ function tick(timestamp) {
 }
 
 canvas.addEventListener('click', (event) => {
-  const rect = canvas.getBoundingClientRect();
-  const x = event.clientX - rect.left;
-  const y = event.clientY - rect.top;
+  const point = canvasPointFromEvent(event);
 
   if (world.buildMode) {
-    placeBuilding(x, y, world.selectedType);
+    placeBuilding(point.x, point.y, world.selectedType);
     return;
   }
 
   for (const building of world.buildings) {
-    const d = Math.hypot(building.x - x, building.y - y);
+    const d = Math.hypot(building.x - point.x, building.y - point.y);
     if (d <= building.radius + 10) {
-      world.buildings = world.buildings.filter(b => b !== building) || world.buildings;
       infoPanel.innerHTML = `<h3>${building.type}</h3><p>Construction sélectionnée.</p>`;
       return;
     }
