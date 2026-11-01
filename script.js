@@ -12,7 +12,7 @@ const buildBtn = document.getElementById('buildBtn');
 const pauseBtn = document.getElementById('pauseBtn');
 
 const world = {
-  minerals: 1800,
+  minerals: 2500,
   quota: 40000,
   energy: 4,
   maxEnergy: 100,
@@ -27,7 +27,9 @@ const world = {
   enemies: [],
   projectiles: [],
   lasers: [],
-  particles: []
+  summary: '',
+  spawnTimer: 0,
+  selectedBuilding: null,
 };
 
 const buildingPrice = {
@@ -35,7 +37,7 @@ const buildingPrice = {
   miner: 45,
   solar: 200,
   laser: 100,
-  missile: 400
+  missile: 400,
 };
 
 function randomBetween(min, max) {
@@ -47,6 +49,12 @@ function canvasPointFromEvent(event) {
   const x = (event.clientX - rect.left) * (canvas.width / rect.width);
   const y = (event.clientY - rect.top) * (canvas.height / rect.height);
   return { x, y };
+}
+
+function formatTime(totalSeconds) {
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = Math.floor(totalSeconds % 60);
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
 function getClosestEnemy(x, y, range) {
@@ -79,65 +87,6 @@ function getClosestBuilding(x, y) {
   return best;
 }
 
-function addAsteroids() {
-  for (let i = 0; i < 24; i++) {
-    world.asteroids.push({
-      x: randomBetween(80, canvas.width - 90),
-      y: randomBetween(150, canvas.height - 100),
-      radius: randomBetween(24, 42),
-      resource: randomBetween(150, 620),
-      empty: false,
-      color: '#76f0b2'
-    });
-  }
-}
-
-function addInitialBuildings() {
-  world.buildings.push({
-    type: 'relay',
-    x: 260,
-    y: 220,
-    radius: 13,
-    health: 100,
-    connected: true,
-    level: 1,
-    cooldown: 0,
-    targetAsteroid: null,
-    energy: 0
-  });
-
-  world.buildings.push({
-    type: 'relay',
-    x: 430,
-    y: 290,
-    radius: 13,
-    health: 100,
-    connected: true,
-    level: 1,
-    cooldown: 0,
-    targetAsteroid: null,
-    energy: 0
-  });
-}
-
-function formatTime(totalSeconds) {
-  const mins = Math.floor(totalSeconds / 60);
-  const secs = Math.floor(totalSeconds % 60);
-  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-}
-
-function updateResourceHud() {
-  mineralsText.textContent = Math.floor(world.minerals);
-  mpmText.textContent = world.mineralsPerMinute;
-  const energyPercent = Math.max(0, Math.min(100, (world.energy / world.maxEnergy) * 100));
-  energyText.textContent = `${Math.floor(world.energy)} / ${energyPercent.toFixed(0)}%`;
-
-  const quotaRatio = Math.min(100, (world.minerals / world.quota) * 100);
-  quotaBar.style.width = `${quotaRatio}%`;
-  quotaText.textContent = `${Math.floor(world.minerals)} / ${world.quota}`;
-  timeText.textContent = formatTime(world.time);
-}
-
 function nearestAsteroid(x, y) {
   let best = null;
   let bestDist = Infinity;
@@ -154,23 +103,84 @@ function nearestAsteroid(x, y) {
   return best;
 }
 
+function addAsteroids() {
+  for (let i = 0; i < 24; i++) {
+    world.asteroids.push({
+      x: randomBetween(80, canvas.width - 90),
+      y: randomBetween(150, canvas.height - 90),
+      radius: randomBetween(22, 42),
+      resource: randomBetween(1200, 5000),
+      empty: false,
+      color: '#76f0b2',
+      glow: 'rgba(118, 240, 178, 0.2)',
+    });
+  }
+}
+
+function addInitialBuildings() {
+  world.buildings.push({
+    type: 'relay',
+    x: 260,
+    y: 220,
+    radius: 13,
+    health: 100,
+    maxHealth: 100,
+    connected: true,
+    level: 1,
+    cooldown: 0,
+    targetAsteroid: null,
+    energy: 0,
+    range: 0,
+    damage: 0,
+  });
+
+  world.buildings.push({
+    type: 'relay',
+    x: 430,
+    y: 290,
+    radius: 13,
+    health: 100,
+    maxHealth: 100,
+    connected: true,
+    level: 1,
+    cooldown: 0,
+    targetAsteroid: null,
+    energy: 0,
+    range: 0,
+    damage: 0,
+  });
+}
+
+function updateHUD() {
+  mineralsText.textContent = Math.floor(world.minerals);
+  mpmText.textContent = world.mineralsPerMinute;
+
+  const energyPercent = Math.max(0, Math.min(100, (world.energy / world.maxEnergy) * 100));
+  energyText.textContent = `${Math.floor(world.energy)} / ${energyPercent.toFixed(0)}%`;
+
+  const quotaRatio = Math.min(100, (world.minerals / world.quota) * 100);
+  quotaBar.style.width = `${quotaRatio}%`;
+  quotaText.textContent = `${Math.floor(world.minerals)} / ${world.quota}`;
+  timeText.textContent = formatTime(world.time);
+}
+
 function spawnEnemy() {
   const side = Math.floor(Math.random() * 4);
   let x = 0;
   let y = 0;
 
   if (side === 0) {
-    x = randomBetween(-20, canvas.width + 20);
-    y = -30;
+    x = randomBetween(-30, canvas.width + 30);
+    y = -40;
   } else if (side === 1) {
-    x = canvas.width + 30;
-    y = randomBetween(-20, canvas.height + 20);
+    x = canvas.width + 40;
+    y = randomBetween(-30, canvas.height + 30);
   } else if (side === 2) {
-    x = randomBetween(-20, canvas.width + 20);
-    y = canvas.height + 30;
+    x = randomBetween(-30, canvas.width + 30);
+    y = canvas.height + 40;
   } else {
-    x = -30;
-    y = randomBetween(-20, canvas.height + 20);
+    x = -40;
+    y = randomBetween(-30, canvas.height + 30);
   }
 
   world.enemies.push({
@@ -179,8 +189,36 @@ function spawnEnemy() {
     radius: 10,
     speed: randomBetween(0.8, 1.4),
     hp: 30,
-    color: '#ff6e6e'
+    maxHp: 30,
+    color: '#ff6e6e',
   });
+}
+
+function getSelectedInfoText(building) {
+  const data = {
+    relay: 'Relais — étend le réseau et relie les bâtiments.',
+    miner: 'Mineur — extrait les ressources de l’astéroïde le plus proche.',
+    solar: 'Solar Station — produit de l’énergie pour le réseau.',
+    laser: 'Basic Laser — défense courte portée et tir précis.',
+    missile: 'Missile Launcher — tir longue portée, dégâts importants.',
+  };
+  return data[building.type] || 'Bâtiment';
+}
+
+function updateInfoPanel() {
+  const selected = world.selectedBuilding;
+  if (!selected) {
+    infoPanel.innerHTML = '<h3>Info</h3><p>Sélectionnez un bâtiment pour voir ses stats.</p>';
+    return;
+  }
+
+  infoPanel.innerHTML = `
+    <h3>${selected.type}</h3>
+    <p>Vie : ${selected.health}/${selected.maxHealth || 100}</p>
+    <p>Type : ${selected.type}</p>
+    <p>Niveau : ${selected.level}</p>
+    <p>${getSelectedInfoText(selected)}</p>
+  `;
 }
 
 function placeBuilding(x, y, type) {
@@ -202,20 +240,23 @@ function placeBuilding(x, y, type) {
     y,
     radius: 14,
     health: 100,
+    maxHealth: 100,
     connected: true,
     level: 1,
     cooldown: 0,
     targetAsteroid: null,
-    energy: type === 'solar' ? 0 : (type === 'laser' ? 1 : (type === 'missile' ? 2 : 0)),
-    range: type === 'laser' ? 120 : (type === 'missile' ? 260 : 0),
-    damage: type === 'laser' ? 30 : (type === 'missile' ? 90 : 0)
+    energy: type === 'solar' ? 0 : (type === 'laser' ? 1 : type === 'missile' ? 2 : 0),
+    range: type === 'laser' ? 120 : type === 'missile' ? 260 : 0,
+    damage: type === 'laser' ? 30 : type === 'missile' ? 90 : 0,
   };
 
   world.buildings.push(building);
-  updateResourceHud();
+  world.selectedBuilding = building;
+  updateInfoPanel();
+  updateHUD();
 }
 
-function maybeFindTargetForMiner(building) {
+function maybeAssignMinerTarget(building) {
   if (building.type !== 'miner') return;
 
   const asteroid = nearestAsteroid(building.x, building.y);
@@ -232,18 +273,18 @@ function maybeFindTargetForMiner(building) {
   }
 }
 
-function updateMineralsProduction(dt) {
+function updateMining(dt) {
   let total = 0;
 
   for (const building of world.buildings) {
     if (building.type !== 'miner') continue;
 
-    maybeFindTargetForMiner(building);
+    maybeAssignMinerTarget(building);
     if (!building.targetAsteroid || building.targetAsteroid.empty) continue;
 
     building.cooldown -= dt;
     if (building.cooldown <= 0) {
-      const gain = Math.min(80, building.targetAsteroid.resource);
+      const gain = Math.min(60, building.targetAsteroid.resource);
       world.minerals += gain;
       building.targetAsteroid.resource -= gain;
       total += gain;
@@ -253,42 +294,42 @@ function updateMineralsProduction(dt) {
         building.targetAsteroid.color = '#8b939c';
       }
 
-      building.cooldown = 1;
+      building.cooldown = 1.15;
     }
   }
 
-  world.mineralsPerMinute = total * 60;
+  world.mineralsPerMinute = Math.round(total * 60);
 }
 
-function updateSolarProduction() {
+function updateSolarProduction(dt) {
   let production = 0;
   for (const building of world.buildings) {
     if (building.type === 'solar' && building.connected) {
       production += 7;
     }
   }
-  world.energy += production * 0.016;
-  world.energy = Math.min(world.energy, world.maxEnergy);
+
+  world.energy = Math.min(world.maxEnergy, world.energy + production * dt);
 }
 
-function updateDefenses(dt) {
+function updateLasersAndMissiles(dt) {
   for (const building of world.buildings) {
     if (building.type === 'laser') {
       building.cooldown -= dt;
       if (building.cooldown <= 0) {
         const target = getClosestEnemy(building.x, building.y, building.range || 120);
-        if (target) {
-          target.hp -= building.damage;
-          world.lasers.push({
-            fromX: building.x,
-            fromY: building.y,
-            toX: target.x,
-            toY: target.y,
-            life: 0.12,
-            color: '#ffe07a'
-          });
-          building.cooldown = 0.55;
-        }
+        if (!target) continue;
+
+        target.hp -= building.damage;
+        world.lasers.push({
+          fromX: building.x,
+          fromY: building.y,
+          toX: target.x,
+          toY: target.y,
+          life: 0.12,
+          color: '#ffe07a',
+        });
+        building.cooldown = 0.55;
       }
     }
 
@@ -296,50 +337,26 @@ function updateDefenses(dt) {
       building.cooldown -= dt;
       if (building.cooldown <= 0) {
         const target = getClosestEnemy(building.x, building.y, building.range || 260);
-        if (target) {
-          world.projectiles.push({
-            x: building.x,
-            y: building.y,
-            target,
-            speed: 220,
-            radius: 4,
-            damage: 90,
-            color: '#ff5d7d'
-          });
-          building.cooldown = 2.2;
-        }
+        if (!target) continue;
+
+        world.projectiles.push({
+          x: building.x,
+          y: building.y,
+          target,
+          speed: 220,
+          radius: 5,
+          damage: 90,
+          color: '#ff5d7d',
+        });
+        building.cooldown = 2.2;
       }
     }
   }
 }
 
-function updateEnemies(dt) {
-  for (let i = world.enemies.length - 1; i >= 0; i--) {
-    const enemy = world.enemies[i];
-    const targetBuilding = getClosestBuilding(enemy.x, enemy.y) || { x: canvas.width / 2, y: canvas.height / 2 };
-    const dx = targetBuilding.x - enemy.x;
-    const dy = targetBuilding.y - enemy.y;
-    const len = Math.hypot(dx, dy) || 1;
-    enemy.x += (dx / len) * enemy.speed * 60 * dt;
-    enemy.y += (dy / len) * enemy.speed * 60 * dt;
-
-    if (targetBuilding && Math.hypot(enemy.x - targetBuilding.x, enemy.y - targetBuilding.y) < 18) {
-      world.energy = Math.max(0, world.energy - 1);
-      world.enemies.splice(i, 1);
-      continue;
-    }
-
-    if (enemy.hp <= 0) {
-      world.enemies.splice(i, 1);
-      world.minerals += 15;
-    }
-  }
-}
-
-function updateProjectiles() {
+function updateProjectiles(dt) {
   for (let i = world.projectiles.length - 1; i >= 0; i--) {
     const p = world.projectiles[i];
-
     if (!p.target || p.target.hp <= 0) {
       world.projectiles.splice(i, 1);
       continue;
@@ -349,8 +366,8 @@ function updateProjectiles() {
     const dy = p.target.y - p.y;
     const len = Math.hypot(dx, dy) || 1;
 
-    p.x += (dx / len) * p.speed * 0.016;
-    p.y += (dy / len) * p.speed * 0.016;
+    p.x += (dx / len) * p.speed * dt;
+    p.y += (dy / len) * p.speed * dt;
 
     if (Math.hypot(p.x - p.target.x, p.y - p.target.y) < p.radius + p.target.radius + 2) {
       p.target.hp -= p.damage;
@@ -368,10 +385,38 @@ function updateLasers(dt) {
   }
 }
 
+function updateEnemies(dt) {
+  for (let i = world.enemies.length - 1; i >= 0; i--) {
+    const enemy = world.enemies[i];
+    const targetBuilding = getClosestBuilding(enemy.x, enemy.y) || { x: canvas.width / 2, y: canvas.height / 2 };
+    const dx = targetBuilding.x - enemy.x;
+    const dy = targetBuilding.y - enemy.y;
+    const len = Math.hypot(dx, dy) || 1;
+
+    enemy.x += (dx / len) * enemy.speed * 60 * dt;
+    enemy.y += (dy / len) * enemy.speed * 60 * dt;
+
+    if (targetBuilding && Math.hypot(enemy.x - targetBuilding.x, enemy.y - targetBuilding.y) < 18) {
+      targetBuilding.health -= 10;
+      world.enemies.splice(i, 1);
+
+      if (targetBuilding.health <= 0) {
+        world.buildings = world.buildings.filter((building) => building !== targetBuilding);
+      }
+      continue;
+    }
+
+    if (enemy.hp <= 0) {
+      world.enemies.splice(i, 1);
+      world.minerals += 15;
+    }
+  }
+}
+
 function renderBackground() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  for (let i = 0; i < 160; i++) {
+  for (let i = 0; i < 180; i++) {
     const x = (i * 97) % canvas.width;
     const y = (i * 53) % canvas.height;
     ctx.fillStyle = 'rgba(255,255,255,0.42)';
@@ -394,10 +439,10 @@ function drawAsteroids() {
 }
 
 function drawBuildings() {
-  for (const b of world.buildings) {
+  for (const building of world.buildings) {
     ctx.beginPath();
     ctx.fillStyle = '#101826';
-    ctx.arc(b.x, b.y, b.radius + 2, 0, Math.PI * 2);
+    ctx.arc(building.x, building.y, building.radius + 2, 0, Math.PI * 2);
     ctx.fill();
 
     const colors = {
@@ -405,13 +450,21 @@ function drawBuildings() {
       miner: '#79f7b9',
       solar: '#ffd769',
       laser: '#ff9a67',
-      missile: '#ff5d7d'
+      missile: '#ff5d7d',
     };
 
     ctx.beginPath();
-    ctx.fillStyle = colors[b.type] || '#8cc8ff';
-    ctx.arc(b.x, b.y, b.radius * 0.7, 0, Math.PI * 2);
+    ctx.fillStyle = colors[building.type] || '#8cc8ff';
+    ctx.arc(building.x, building.y, building.radius * 0.7, 0, Math.PI * 2);
     ctx.fill();
+
+    if (world.selectedBuilding === building) {
+      ctx.beginPath();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.arc(building.x, building.y, building.radius + 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 }
 
@@ -446,16 +499,16 @@ function drawLasers() {
 
 function drawNetwork() {
   for (let i = 0; i < world.buildings.length; i++) {
-    const b1 = world.buildings[i];
+    const a = world.buildings[i];
     for (let j = i + 1; j < world.buildings.length; j++) {
-      const b2 = world.buildings[j];
-      const d = Math.hypot(b1.x - b2.x, b1.y - b2.y);
+      const b = world.buildings[j];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
       if (d < 180) {
         ctx.beginPath();
         ctx.strokeStyle = 'rgba(96, 192, 255, 0.38)';
         ctx.lineWidth = 1.2;
-        ctx.moveTo(b1.x, b1.y);
-        ctx.lineTo(b2.x, b2.y);
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
         ctx.stroke();
       }
     }
@@ -472,46 +525,24 @@ function render() {
   drawEnemies();
 }
 
-function updateInfoPanel() {
-  const selected = world.buildings[world.buildings.length - 1];
-  if (!selected) {
-    infoPanel.innerHTML = '<h3>Info</h3><p>Sélectionnez un bâtiment pour voir ses stats.</p>';
-    return;
-  }
-
-  const texts = {
-    relay: 'Relais — étend le réseau et relie les structures.',
-    miner: 'Mineur — extrait des minéraux au contact d’un astéroïde.',
-    solar: 'Solar Station — produit de l’énergie pour le réseau.',
-    laser: 'Basic Laser — défense de courte portée.',
-    missile: 'Missile Launcher — tir de longue portée, dégâts importants.'
-  };
-
-  infoPanel.innerHTML = `
-    <h3>${selected.type}</h3>
-    <p>Vie : ${selected.health}</p>
-    <p>Type : ${selected.type}</p>
-    <p>Niveau : ${selected.level}</p>
-    <p>${texts[selected.type]}</p>
-  `;
-}
-
 function tick(timestamp) {
   const dt = Math.min(0.033, (timestamp - world.lastTime) / 1000 || 0.016);
   world.lastTime = timestamp;
 
   if (!world.paused) {
     world.time += dt;
-    updateSolarProduction();
-    updateMineralsProduction(dt);
-    updateDefenses(dt);
-    updateEnemies(dt);
-    updateProjectiles();
-    updateLasers(dt);
-    updateResourceHud();
-    updateInfoPanel();
+    world.spawnTimer += dt;
 
-    if (Math.random() < 0.012) {
+    updateSolarProduction(dt);
+    updateMining(dt);
+    updateLasersAndMissiles(dt);
+    updateProjectiles(dt);
+    updateLasers(dt);
+    updateEnemies(dt);
+    updateHUD();
+
+    if (world.spawnTimer > 2.5) {
+      world.spawnTimer = 0;
       spawnEnemy();
     }
   }
@@ -528,18 +559,22 @@ canvas.addEventListener('click', (event) => {
     return;
   }
 
+  let selected = null;
   for (const building of world.buildings) {
     const d = Math.hypot(building.x - point.x, building.y - point.y);
-    if (d <= building.radius + 10) {
-      infoPanel.innerHTML = `<h3>${building.type}</h3><p>Construction sélectionnée.</p>`;
-      return;
+    if (d <= building.radius + 8) {
+      selected = building;
+      break;
     }
   }
+
+  world.selectedBuilding = selected;
+  updateInfoPanel();
 });
 
 document.querySelectorAll('.build-item').forEach((item) => {
   item.addEventListener('click', () => {
-    document.querySelectorAll('.build-item').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.build-item').forEach((el) => el.classList.remove('active'));
     item.classList.add('active');
     world.selectedType = item.dataset.type;
     world.buildMode = true;
@@ -559,7 +594,7 @@ pauseBtn.addEventListener('click', () => {
 
 addAsteroids();
 addInitialBuildings();
-updateResourceHud();
+world.selectedBuilding = world.buildings[0];
+updateHUD();
 updateInfoPanel();
 requestAnimationFrame(tick);
-
