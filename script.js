@@ -32,6 +32,7 @@ const world = {
   lasers: [],
   currentWave: 0,
   waveTimer: 8,
+  alerts: [],
   core: {
     type: 'core',
     x: canvas.width / 2,
@@ -60,6 +61,22 @@ const buildingBuildTime = {
   solar: 7,
   laser: 7,
   missile: 9,
+};
+
+const upgradeCosts = {
+  relay: 60,
+  miner: 80,
+  solar: 120,
+  laser: 100,
+  missile: 180,
+};
+
+const buildingStats = {
+  relay: { hp: 100, range: 0, damage: 0 },
+  miner: { hp: 100, range: 65, damage: 0 },
+  solar: { hp: 110, range: 0, damage: 0 },
+  laser: { hp: 100, range: 120, damage: 30 },
+  missile: { hp: 110, range: 260, damage: 90 },
 };
 
 function randomBetween(min, max) {
@@ -170,6 +187,10 @@ function addAsteroids() {
   }
 }
 
+function pushAlert(text) {
+  world.alerts.push({ text, ttl: 2.5 });
+}
+
 function updateHUD() {
   mineralsText.textContent = Math.floor(world.minerals);
   mpmText.textContent = world.mineralsPerMinute;
@@ -227,6 +248,7 @@ function updateInfoPanel() {
     <p>Vie : ${selected.health}/${selected.maxHealth}</p>
     <p>Construction : ${progress}</p>
     <p>Connecté : ${selected.connected ? 'oui' : 'non'}</p>
+    <p>Amélioration : niveau ${selected.level}</p>
     <p>${getSelectedInfoText(selected)}</p>
   `;
 }
@@ -242,6 +264,34 @@ function upgradeCore() {
   world.core.level += 1;
   world.maxEnergy += 30;
   world.energy = Math.min(world.maxEnergy, world.energy + 15);
+  world.selectedEntity = world.core;
+  updateInfoPanel();
+  updateHUD();
+}
+
+function canUpgradeBuilding(building) {
+  return building.level < 3 && world.minerals >= (upgradeCosts[building.type] || 100);
+}
+
+function upgradeBuilding(building) {
+  const cost = upgradeCosts[building.type] || 100;
+  if (!building || !canUpgradeBuilding(building)) return;
+
+  world.minerals -= cost;
+  building.level += 1;
+  building.range = Math.max(building.range, Math.round(building.range * 1.2));
+  building.damage = Math.round(building.damage * 1.3);
+  building.maxHealth = Math.round(building.maxHealth * 1.15);
+  building.health = building.maxHealth;
+  updateInfoPanel();
+  updateHUD();
+}
+
+function recycleBuilding(building) {
+  if (!building) return;
+  const gain = Math.round((building.maxHealth * 0.35) + (building.level * 10));
+  world.minerals += gain;
+  world.buildings = world.buildings.filter((b) => b !== building);
   world.selectedEntity = world.core;
   updateInfoPanel();
   updateHUD();
@@ -266,7 +316,7 @@ function placeBuilding(x, y, type) {
     y,
     radius: 14,
     health: 100,
-    maxHealth: 100,
+    maxHealth: buildingStats[type].hp || 100,
     active: false,
     buildProgress: 0,
     buildTime: buildingBuildTime[type] || 6,
@@ -275,8 +325,8 @@ function placeBuilding(x, y, type) {
     cooldown: 0,
     targetAsteroid: null,
     energy: type === 'solar' ? 0 : type === 'laser' ? 1 : type === 'missile' ? 2 : 0,
-    range: type === 'laser' ? 120 : type === 'missile' ? 260 : 0,
-    damage: type === 'laser' ? 30 : type === 'missile' ? 90 : 0,
+    range: buildingStats[type].range || 0,
+    damage: buildingStats[type].damage || 0,
   };
 
   world.buildings.push(building);
@@ -289,6 +339,8 @@ function spawnWave() {
   world.currentWave += 1;
   const side = ['left', 'right', 'top', 'bottom'][Math.floor(Math.random() * 4)];
   const count = 5 + world.currentWave * 2;
+
+  pushAlert(`Wave ${world.currentWave} incoming from ${side}`);
 
   for (let i = 0; i < count; i++) {
     let x = 0;
@@ -317,6 +369,7 @@ function spawnWave() {
       maxHp: 26 + world.currentWave * 4,
       color: '#ff6e6e',
       damage: 8,
+      type: 'fighter',
     });
   }
 
@@ -410,6 +463,13 @@ function updateLasers(dt) {
       world.lasers.splice(i, 1);
     }
   }
+
+  for (let i = world.alerts.length - 1; i >= 0; i--) {
+    world.alerts[i].ttl -= dt;
+    if (world.alerts[i].ttl <= 0) {
+      world.alerts.splice(i, 1);
+    }
+  }
 }
 
 function updateDefenses(dt) {
@@ -488,10 +548,6 @@ function updateEnemies(dt) {
     if (Math.hypot(enemy.x - target.x, enemy.y - target.y) < hitDist) {
       target.health -= enemy.damage;
       world.enemies.splice(i, 1);
-
-      if (target.type === 'core' && target.health <= 0) {
-        // game over / fail state ignored for prototype
-      }
       continue;
     }
 
@@ -594,15 +650,6 @@ function drawOctagon(x, y, r, fill, stroke) {
   }
 }
 
-function drawAsteroidShape(asteroid) {
-  ctx.beginPath();
-  ctx.fillStyle = asteroid.empty ? '#8e929a' : asteroid.color;
-  ctx.arc(asteroid.x, asteroid.y, asteroid.radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-  ctx.stroke();
-}
-
 function renderBackground() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -619,7 +666,12 @@ function renderBackground() {
 
 function drawAsteroids() {
   for (const asteroid of world.asteroids) {
-    drawAsteroidShape(asteroid);
+    ctx.beginPath();
+    ctx.fillStyle = asteroid.empty ? '#8e929a' : asteroid.color;
+    ctx.arc(asteroid.x, asteroid.y, asteroid.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.stroke();
   }
 }
 
@@ -755,6 +807,16 @@ function drawNetwork() {
   }
 }
 
+function drawAlerts() {
+  for (let i = 0; i < world.alerts.length; i++) {
+    const alert = world.alerts[i];
+    const alpha = Math.min(1, alert.ttl / 2.5);
+    ctx.fillStyle = `rgba(255, 140, 70, ${alpha})`;
+    ctx.font = 'bold 14px Arial';
+    ctx.fillText(alert.text, 18, 115 + i * 22);
+  }
+}
+
 function render() {
   renderBackground();
   drawNetwork();
@@ -764,6 +826,7 @@ function render() {
   drawLasers();
   drawProjectiles();
   drawEnemies();
+  drawAlerts();
 }
 
 function tick(timestamp) {
@@ -841,6 +904,19 @@ pauseBtn.addEventListener('click', () => {
 
 upgradeCoreBtn.addEventListener('click', () => {
   upgradeCore();
+});
+
+canvas.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+  const point = canvasPointFromEvent(event);
+  const building = world.buildings.find((b) => Math.hypot(b.x - point.x, b.y - point.y) <= b.radius + 8);
+  if (building) {
+    if (canUpgradeBuilding(building)) {
+      upgradeBuilding(building);
+    } else {
+      recycleBuilding(building);
+    }
+  }
 });
 
 addAsteroids();
