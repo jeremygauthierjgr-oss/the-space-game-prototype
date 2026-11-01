@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Space Network Defense</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <div class="side-section">
+          <h3>Bâtiments</h3>
+          <div class="build-item active" data-type="relay">
+            <span>Relais</span>
+            <strong>20</strong>
+          </div>
+          <div class="build-item" data-type="miner">
+            <span>Mineur</span>
+            <strong>45</strong>
+          </div>
+          <div class="build-item" data-type="solar">
+            <span>Solar</span>
+            <strong>200</strong>
+          </div>
+          <div class="build-item" data-type="laser">
+            <span>Laser</span>
+            <strong>100</strong>
+          </div>
+          <div class="build-item" data-type="missile">
+            <span>Missile</span>
+            <strong>400</strong>
+          </div>
+        </div>
+
+        <div class="side-section info-panel" id="infoPanel">
+          <h3>Info</h3>
+          <p>Sélectionnez un bâtiment pour voir ses stats.</p>
+        </div>
+      </aside>
+
+      <main id="main">
+        <header id="hud">
+          <div class="hud-group left">
+            <span>Mining Hard</span>
+            <span>Temps : <strong id="timeText">00:00</strong></span>
+          </div>
+
+          <div class="hud-group center">
+            <div class="quota-label">Quota</div>
+            <div class="progress">
+              <div id="quotaBar"></div>
+            </div>
+            <div id="quotaText">0 / 40000</div>
+          </div>
+
+          <div class="hud-group right">
+            <span>Minéraux : <strong id="mineralsText">1800</strong></span>
+            <span>MPM : <strong id="mpmText">0</strong></span>
+            <span>Énergie : <strong id="energyText">4 / 100%</strong></span>
+          </div>
+        </header>
+
+        <div id="toolbar">
+          <button id="pauseBtn">Pause</button>
+          <button id="buildBtn">Mode pose</button>
+        </div>
+
+        <canvas id="gameCanvas" width="1200" height="700"></canvas>
+      </main>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
